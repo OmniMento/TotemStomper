@@ -1,0 +1,8 @@
+## Interface: 11507
+## Title: TotemStomper
+## Author: Mento
+## Version: 1.0
+## SavedVariables: TotemStomperDB
+
+TotemStomper.lua
+TotemStomper_Options.lua
