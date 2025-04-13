@@ -160,7 +160,7 @@ end
 
 
 function UpdateMacro()
-    local macroName = "TotemStomp"
+    local macroName = "TotemStomper"
     local macroBody = "/castsequence reset=combat/15 "
     for _, totem in ipairs(TotemStomperDB.totems) do
         if totem.enabled then
