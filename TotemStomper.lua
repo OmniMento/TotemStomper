@@ -1,5 +1,8 @@
 local dropdown_shown = false
 
+-- Create Buttons
+local buttons = {}
+
 -- All possible totems per type (you can expand this list)
 local totemOptions = {
     Earth = { "Strength of Earth Totem", "Earthbind Totem", "Tremor Totem", "Stoneskin Totem", "Stoneclaw Totem" },
@@ -13,6 +16,7 @@ TotemStomperDB = TotemStomperDB or {
     buttonHeight = 36,
     low_opacity = 0.4,
     high_opacity = 1,
+    showTimers = true,
     totems = {
         { spell = "Healing Stream Totem", enabled = true },
         { spell = "Searing Totem", enabled = true },
@@ -21,6 +25,20 @@ TotemStomperDB = TotemStomperDB or {
     }
 }
 
+local function UpdateTotemDurations()
+    for i, btn in ipairs(buttons) do
+        local totem = TotemStomperDB.totems[i]
+        local found = false
+        for slot = 1, 4 do
+            local haveTotem, name, startTime, duration, icon = GetTotemInfo(slot)
+            if haveTotem and string.find(name:lower(), totem.spell:lower(), 1, true) then
+                local timeLeft = startTime + duration - GetTime()
+                btn.cooldown:SetCooldown(startTime, duration)
+                break
+            end
+        end
+    end
+end
 
 
 -- Main UI Frame
@@ -57,10 +75,6 @@ local function ShowDropdown(menu, anchor)
     ToggleDropDownMenu(1, nil, DropDownMenu, anchor, 0, 0)
 end
 
-
--- Create Buttons
-local buttons = {}
-
 local function CreateTotemButton(index, spell)
     local btn = CreateFrame("Button", "TotemStomperBtn"..spell, frame, "SecureActionButtonTemplate, ActionButtonTemplate")
     btn:SetSize(TotemStomperDB.buttonWidth, TotemStomperDB.buttonHeight)
@@ -77,6 +91,13 @@ local function CreateTotemButton(index, spell)
     end
 
     btn.icon:SetTexture(icon or 1368)
+
+    btn.cooldown = CreateFrame("Cooldown", nil, btn, "CooldownFrameTemplate")
+    btn.cooldown:SetAllPoints(btn)
+    btn.cooldown:SetDrawEdge(false)
+    btn.cooldown:SetDrawBling(false)
+    -- btn.cooldown:SetSwipeColor(0, 0, 0, 0.6)  -- optional: dark swipe effect
+    btn.cooldown:SetReverse(true)
     
     btn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -179,5 +200,10 @@ end
 
 C_Timer.After(1, function()
     RebuildTotemButtons()
+    UpdateMacro()
     print("TotemStomper: Ready to stomp!")
 end)
+
+if TotemStomperDB.showTimers then
+    C_Timer.NewTicker(1, UpdateTotemDurations)
+end
