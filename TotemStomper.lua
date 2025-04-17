@@ -1,38 +1,51 @@
-local dropdown_shown = false
+TotemStomper = {}
 
--- Create Buttons
-local buttons = {}
+TotemStomper.CURRENT_DB_VERSION = 1
 
--- All possible totems per type (you can expand this list)
-local totemOptions = {
+function TotemStomperInitDB()
+    defaultDB = {
+        __version = 1,
+        buttonWidth = 36,
+        buttonHeight = 36,
+        low_opacity = 0.4,
+        high_opacity = 1,
+        showduration_update_interval = 0.5,
+        showDuration = true,
+        moveable = true,
+        totems = {
+            { spell = "Healing Stream Totem", enabled = true },
+            { spell = "Searing Totem", enabled = true },
+            { spell = "Stoneskin Totem", enabled = true },
+            { spell = "Windfury Totem", enabled = false },
+        }
+    }
+    
+    if not TotemStomperDB or TotemStomperDB.__version < TotemStomper.CURRENT_DB_VERSION then
+        print("TotemStomper: Migrating settings...")
+        TotemStomperDB = CopyTable(defaultDB)
+    end
+    TotemStomper.DB = TotemStomperDB
+end
+
+
+TotemStomper.buttons = {}
+TotemStomper.dropdown_shown = false
+
+TotemStomper.totemOptions = {
     Earth = { "Strength of Earth Totem", "Earthbind Totem", "Tremor Totem", "Stoneskin Totem", "Stoneclaw Totem" },
     Fire  = { "Searing Totem", "Fire Nova Totem", "Magma Totem", "Frost Resistance Totem", "Flametongue Totem" },
     Water = { "Healing Stream Totem", "Mana Spring Totem", "Disease Cleansing Totem", "Poison Cleansing Totem", "Fire Resistance Totem" },
     Air   = { "Windfury Totem", "Grace of Air Totem", "Nature resistance Totem", "Grounding Totem", "Windwall Totem", "Tranquil Air Totem" },
 }
 
-TotemStomperDB = TotemStomperDB or {
-    buttonWidth = 36,
-    buttonHeight = 36,
-    low_opacity = 0.4,
-    high_opacity = 1,
-    showTimers = true,
-    totems = {
-        { spell = "Healing Stream Totem", enabled = true },
-        { spell = "Searing Totem", enabled = true },
-        { spell = "Stoneskin Totem", enabled = false },
-        { spell = "Windfury Totem", enabled = true },
-    }
-}
+TotemStomper.DropDownMenu = CreateFrame("Frame", "TotemStomperDropdown", UIParent, "UIDropDownMenuTemplate")
 
-local function UpdateTotemDurations()
-    for i, btn in ipairs(buttons) do
-        local totem = TotemStomperDB.totems[i]
-        local found = false
+TotemStomper.UpdateTotemDurations = function()
+    for i, btn in ipairs(TotemStomper.buttons) do
+        local totem = TotemStomper.DB.totems[i]
         for slot = 1, 4 do
-            local haveTotem, name, startTime, duration, icon = GetTotemInfo(slot)
-            if haveTotem and string.find(name:lower(), totem.spell:lower(), 1, true) then
-                local timeLeft = startTime + duration - GetTime()
+            local haveTotem, name, startTime, duration = GetTotemInfo(slot)
+            if haveTotem and name:lower():find(totem.spell:lower(), 1, true) then
                 btn.cooldown:SetCooldown(startTime, duration)
                 break
             end
@@ -40,170 +53,204 @@ local function UpdateTotemDurations()
     end
 end
 
+TotemStomper.handleMoveable = function()
+    if not TotemStomper.DB.moveable then
+        if TotemStomper.MainUI.dragText then
+            TotemStomper.MainUI.dragText:Hide()
+            TotemStomper.MainUI.dragText = nil
+        end
+        return
+    end
 
--- Main UI Frame
-local frame = CreateFrame("Frame", "TotemStomperUI", UIParent, "BackdropTemplate")
-frame:SetSize(TotemStomperDB.buttonWidth * 8, TotemStomperDB.buttonHeight * 2)
-frame:SetPoint("CENTER", 0, -100)   
-frame:SetMovable(true)
-frame:EnableMouse(true)
-frame:RegisterForDrag("LeftButton")
-frame:SetScript("OnDragStart", frame.StartMoving)
-frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    local dragText = CreateFrame("Frame", nil, TotemStomper.MainUI, "BackdropTemplate")
+    dragText:SetSize(20, 20)
+    dragText:SetPoint("TOPLEFT", TotemStomper.MainUI, "TOPLEFT", 0, 2 + TotemStomper.DB.buttonHeight / 2)
+    dragText:SetBackdrop({
+        bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+        edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+        tile = true, tileSize = 8, edgeSize = 8,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 }
+    })
+    dragText:SetBackdropColor(0, 0, 0, 0.6)
 
--- Create your own dropdown frame (global or local is fine)
-local DropDownMenu = CreateFrame("Frame", "TotemStomperDropdown", UIParent, "UIDropDownMenuTemplate")
+    local dragFont = dragText:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    dragFont:SetAllPoints()
+    dragFont:SetText("O")
+    dragFont:SetTextColor(1, 1, 1, 0.8)
 
-local function ShowDropdown(menu, anchor)
-    -- Create a function to initialize the dropdown menu
-    UIDropDownMenu_Initialize(DropDownMenu, function(self, level)
-        for i, item in ipairs(menu) do
+    dragText:EnableMouse(true)
+    dragText:RegisterForDrag("LeftButton")
+    dragText:SetScript("OnDragStart", function() TotemStomper.MainUI:StartMoving() end)
+    dragText:SetScript("OnDragStop", function() TotemStomper.MainUI:StopMovingOrSizing() end)
+    TotemStomper.MainUI.dragText = dragText
+end
+
+TotemStomper.handleShowDuration = function()
+    if TotemStomper.DB.showDuration then
+        if not TotemStomper.TickerShowDuration then
+            TotemStomper.TickerShowDuration = C_Timer.NewTicker(TotemStomper.DB.showduration_update_interval, TotemStomper.UpdateTotemDurations)
+        end
+    elseif TotemStomper.TickerShowDuration then
+        TotemStomper.TickerShowDuration:Cancel()
+        TotemStomper.TickerShowDuration = nil
+    end
+end
+
+TotemStomper.ShowDropdown = function(menu, anchor)
+    UIDropDownMenu_Initialize(TotemStomper.DropDownMenu, function(_, level)
+        for _, item in ipairs(menu) do
             local info = UIDropDownMenu_CreateInfo()
-            info.text = item.text
-            info.func = item.func
-            info.icon = item.icon
-            info.iconCoords = {0, 1, 0, 1}
-
-            info.tooltipTitle = item.spell
-            info.tooltipText = item.spell
-
+            for k, v in pairs(item) do info[k] = v end
             UIDropDownMenu_AddButton(info, level)
         end
     end)
-
-    -- Show the dropdown menu
-    ToggleDropDownMenu(1, nil, DropDownMenu, anchor, 0, 0)
+    ToggleDropDownMenu(1, nil, TotemStomper.DropDownMenu, anchor, 0, 0)
 end
 
-local function CreateTotemButton(index, spell)
-    local btn = CreateFrame("Button", "TotemStomperBtn"..spell, frame, "SecureActionButtonTemplate, ActionButtonTemplate")
-    btn:SetSize(TotemStomperDB.buttonWidth, TotemStomperDB.buttonHeight)
+TotemStomper.BuildDropdownMenu = function(index)
+    local menu = {}
+    for element, spells in pairs(TotemStomper.totemOptions) do
+        table.insert(menu, {
+            text = "---- " .. element .. " ----",
+            isTitle = true,
+            notCheckable = true,
+            disabled = true,
+        })
+        for _, spell in ipairs(spells) do
+            table.insert(menu, {
+                text = spell,
+                icon = GetSpellTexture(spell),
+                func = function()
+                    TotemStomper.DB.totems[index].spell = spell
+                    TotemStomper.dropdown_shown = false
+                    TotemStomper.RebuildTotemButtons()
+                end
+            })
+        end
+    end
+    return menu
+end
+
+TotemStomper.CreateTotemButton = function(index, spell)
+    -- Check if spell icons are loaded
+    local icon = GetSpellTexture(spell)
+    if not icon then
+        C_Timer.After(1, function() TotemStomper.CreateTotemButton(index, spell) end)
+        return
+    end
+    
+    local btn = CreateFrame("Button", "TotemStomperBtn" .. spell, TotemStomper.MainUI, "SecureActionButtonTemplate, ActionButtonTemplate")
+    btn:SetSize(TotemStomper.DB.buttonWidth, TotemStomper.DB.buttonHeight)
     btn:SetPoint("LEFT", (index - 1) * 40, 0)
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     btn:SetAttribute("type", "spell")
     btn:SetAttribute("spell", spell)
-    btn:SetAlpha(TotemStomperDB.totems[index].enabled and TotemStomperDB.high_opacity or TotemStomperDB.low_opacity)
-    
-    local icon = GetSpellTexture(spell)
-    if not icon then
-        RebuildTotemButtons()
-        return
-    end
 
-    btn.icon:SetTexture(icon or 1368)
+    btn:SetAlpha(TotemStomper.DB.totems[index].enabled and TotemStomper.DB.high_opacity or TotemStomper.DB.low_opacity)
+
+    
+    btn.icon:SetTexture(icon)
 
     btn.cooldown = CreateFrame("Cooldown", nil, btn, "CooldownFrameTemplate")
     btn.cooldown:SetAllPoints(btn)
     btn.cooldown:SetDrawEdge(false)
     btn.cooldown:SetDrawBling(false)
-    -- btn.cooldown:SetSwipeColor(0, 0, 0, 0.6)  -- optional: dark swipe effect
     btn.cooldown:SetReverse(true)
-    
+
     btn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        if spell then
-            local spellName, rank, icon, castTime, minRange, maxRange, spellID, originalIcon = GetSpellInfo(spell)
-            if spellID then
-                GameTooltip:SetHyperlink("spell:" .. spellID)
-            else
-                GameTooltip:SetText(spellName)
-            end
-            btn:SetAttribute("spell", spellID or spellName)
+        local _, _, _, _, _, _, spellID = GetSpellInfo(spell)
+        if spellID then
+            GameTooltip:SetHyperlink("spell:" .. spellID)
+        else
+            GameTooltip:SetText(spell)
         end
     end)
     btn:SetScript("OnLeave", GameTooltip_Hide)
 
     btn:SetScript("OnClick", function(self, button)
+        print("Clicked", button)
+        if UnitAffectingCombat("player") then return end
         if button == "RightButton" then
-            local menu = {}
-
-            -- Create a menu item for each spell
-            for element, spells in pairs(totemOptions) do
-                -- Add group header/separator
-                table.insert(menu, {
-                    text = "---- " .. element .. " ----",
-                    isTitle = true,
-                    notCheckable = true,
-                    disabled = true,
-                })
-        
-                -- Add spell entries
-                for _, spell in ipairs(spells) do
-                    local icon = GetSpellTexture(spell)
-                    table.insert(menu, {
-                        text = spell,
-                        icon = icon,
-                        func = function()
-                            TotemStomperDB.totems[index].spell = spell
-                            dropdown_shown = false
-                            btn:SetAlpha(1)
-                            UpdateMacro()
-                            RebuildTotemButtons()
-                        end,
-                        notCheckable = false,
-                    })
-                end
-            end
-
-            if dropdown_shown then
-                dropdown_shown = false
-                CloseDropDownMenus()
+            if IsShiftKeyDown() then
+                TotemStomper.DB.moveable = not TotemStomper.DB.moveable
+                TotemStomper.handleMoveable()
             else
-                dropdown_shown = true
-                ShowDropdown(menu, self)
+                if TotemStomper.dropdown_shown then
+                    CloseDropDownMenus()
+                else
+                    TotemStomper.ShowDropdown(TotemStomper.BuildDropdownMenu(index), self)
+                end
+                TotemStomper.dropdown_shown = not TotemStomper.dropdown_shown
             end
         else
-            TotemStomperDB.totems[index].enabled = not TotemStomperDB.totems[index].enabled
-            self:SetAlpha(TotemStomperDB.totems[index].enabled and TotemStomperDB.high_opacity or TotemStomperDB.low_opacity)
-            UpdateMacro()
+            local entry = TotemStomper.DB.totems[index]
+            entry.enabled = not entry.enabled
+            self:SetAlpha(entry.enabled and TotemStomper.DB.high_opacity or TotemStomper.DB.low_opacity)
+            TotemStomper.UpdateMacro()
         end
     end)
 
-    -- CreateDropDownButton(btn, name, index)
-
-    buttons[index] = btn
+    TotemStomper.buttons[index] = btn
 end
 
-function RebuildTotemButtons()
-    -- Remove old buttons
-    for _, btn in pairs(buttons) do
+TotemStomper.RebuildTotemButtons = function()
+    if UnitAffectingCombat("player") then return end
+    for _, btn in ipairs(TotemStomper.buttons) do
         btn:Hide()
         btn:SetParent(nil)
-        btn = nil
     end
-    buttons = {}
-
-    -- Create new buttons in order
-    for i, data in ipairs(TotemStomperDB.totems) do
-        CreateTotemButton(i, data.spell)
+    TotemStomper.buttons = {}
+    for i, data in ipairs(TotemStomper.DB.totems) do
+        TotemStomper.CreateTotemButton(i, data.spell)
     end
+    TotemStomper.UpdateMacro()
 end
 
+TotemStomper.initMainUI = function()
+    TotemStomper.MainUI = CreateFrame("Frame", "TotemStomperUI", UIParent, "BackdropTemplate")
+    TotemStomper.MainUI:SetSize(TotemStomper.DB.buttonWidth * 4, TotemStomper.DB.buttonHeight)
+    TotemStomper.MainUI:SetPoint("CENTER", TotemStomper.DB.buttonWidth * 4, TotemStomper.DB.buttonHeight * 2)
+    TotemStomper.MainUI:SetMovable(true)
+    TotemStomper.handleMoveable()
+end
 
-function UpdateMacro()
+TotemStomper.UpdateMacro = function()
     local macroName = "TotemStomper"
-    local macroBody = "/castsequence reset=combat/15 "
-    for _, totem in ipairs(TotemStomperDB.totems) do
-        if totem.enabled then
-            macroBody = macroBody .. totem.spell .. ","
+    local body = "#showtooltip \n/castsequence reset=combat/15 "
+
+    for _, data in ipairs(TotemStomper.DB.totems) do
+        if data.enabled then
+            body = body .. data.spell .. ", "
         end
     end
-    macroBody = macroBody:sub(1, -2) -- remove trailing comma
 
-    local existingIndex = GetMacroIndexByName(macroName)
-    if existingIndex > 0 then
-        EditMacro(existingIndex, macroName, nil, macroBody)
+    body = body:gsub(", $", "") -- remove trailing comma
+
+    local macroIndex = GetMacroIndexByName(macroName)
+    if macroIndex == 0 then
+        CreateMacro(macroName, "INV_MISC_QUESTIONMARK", body, true)
     else
-        CreateMacro(macroName, "INV_MISC_QUESTIONMARK", macroBody, true)
+        EditMacro(macroIndex, macroName, nil, body)
     end
 end
 
-C_Timer.After(1, function()
-    RebuildTotemButtons()
-    UpdateMacro()
-    print("TotemStomper: Ready to stomp!")
-end)
-
-if TotemStomperDB.showTimers then
-    C_Timer.NewTicker(1, UpdateTotemDurations)
+-- Init routine
+TotemStomper.InitTotemStomper = function()
+    TotemStomper.initMainUI()
+    TotemStomper.RebuildTotemButtons()
+    TotemStomper.handleShowDuration()
 end
+
+local f = CreateFrame("Frame")
+f:RegisterEvent("ADDON_LOADED")
+f:SetScript("OnEvent", function(self, event, addonName)
+    if addonName == "TotemStomper" then
+        TotemStomperInitDB()
+        TotemStomper.InitTotemStomper()
+        self:UnregisterAllEvents()
+        self:SetScript("OnEvent", nil)
+        self:Hide()
+        print("|cff0070ddTotemStomper ready to stomp!|r")
+    end
+end)

@@ -1,7 +1,8 @@
 ## Interface: 11507
 ## Title: TotemStomper
 ## Author: OmniMento
-## Version: 1.0
+## Version: 1.1
 ## SavedVariables: TotemStomperDB
 
 TotemStomper.lua
+TotemStomper_Options.lua
