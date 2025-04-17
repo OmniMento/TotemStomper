@@ -4,7 +4,7 @@ TotemStomper.CURRENT_DB_VERSION = 1
 
 function TotemStomperInitDB()
     defaultDB = {
-        __version = 1,
+        __version = TotemStomper.CURRENT_DB_VERSION,
         buttonWidth = 36,
         buttonHeight = 36,
         low_opacity = 0.4,
@@ -13,17 +13,22 @@ function TotemStomperInitDB()
         showDuration = true,
         moveable = true,
         totems = {
-            { spell = "Healing Stream Totem", enabled = true },
+            { spell = "Windfury Totem", enabled = true },
+            { spell = "Strength of Earth Totem", enabled = true },
             { spell = "Searing Totem", enabled = true },
-            { spell = "Stoneskin Totem", enabled = true },
-            { spell = "Windfury Totem", enabled = false },
+            { spell = "Healing Stream Totem", enabled = false },
         }
     }
     
-    if not TotemStomperDB or TotemStomperDB.__version < TotemStomper.CURRENT_DB_VERSION then
-        print("TotemStomper: Migrating settings...")
+    local ok, needsReset = pcall(function()
+        return not TotemStomperDB or TotemStomperDB.__version < TotemStomper.CURRENT_DB_VERSION
+    end)
+
+    if not ok or needsReset then
+        print("|cff0070ddTotemStomper: Migrating settings...|r")
         TotemStomperDB = CopyTable(defaultDB)
     end
+    
     TotemStomper.DB = TotemStomperDB
 end
 
@@ -169,7 +174,6 @@ TotemStomper.CreateTotemButton = function(index, spell)
     btn:SetScript("OnLeave", GameTooltip_Hide)
 
     btn:SetScript("OnClick", function(self, button)
-        print("Clicked", button)
         if UnitAffectingCombat("player") then return end
         if button == "RightButton" then
             if IsShiftKeyDown() then
@@ -248,6 +252,7 @@ f:SetScript("OnEvent", function(self, event, addonName)
     if addonName == "TotemStomper" then
         TotemStomperInitDB()
         TotemStomper.InitTotemStomper()
+        TotemStomper.UpdateMacro()
         self:UnregisterAllEvents()
         self:SetScript("OnEvent", nil)
         self:Hide()

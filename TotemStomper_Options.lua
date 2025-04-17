@@ -42,29 +42,51 @@ TotemStomper.CreateCheckbox = function(name, label, tooltip, parent, onClick)
     return cb
 end
 
--- ===== OnShow Handler =====
-TotemStomper.OptionsPanel:SetScript("OnShow", function(self)
-    local title = self:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+TotemStomper.OptionsWatchList = {}
+TotemStomper.RegisterWatchedOption = function(checkbox, dbKey)
+    table.insert(TotemStomper.OptionsWatchList, { checkbox = checkbox, dbKey = dbKey })
+end
+TotemStomper.CreateOptions = function()
+    local title = TotemStomper.OptionsPanel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 16, -16)
     title:SetText(addonName .. " v" .. addonVersion)
 
-    local desc = self:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    local desc = TotemStomper.OptionsPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
     desc:SetText("Totems will be stomped from left to right")
+    local desc2 = TotemStomper.OptionsPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    desc2:SetPoint("TOPLEFT", desc, "BOTTOMLEFT", 0, -8)
+    desc2:SetText("No reconfiguration during combat")
 
-    local cbDuration = TotemStomper.CreateCheckbox("Duration", "Totem Duration", "Show duration text on totems", self, function(_, val)
+    local cbDuration = TotemStomper.CreateCheckbox("Duration", "Totem Duration", "Show duration text on totems", TotemStomper.OptionsPanel, function(_, val)
         TotemStomper.DB.showDuration = val
         TotemStomper.handleShowDuration()
     end)
-    cbDuration:SetPoint("TOPLEFT", desc, "BOTTOMLEFT", 0, -20)
-    cbDuration:SetChecked(TotemStomper.DB.showDuration)
+    cbDuration:SetPoint("TOPLEFT", desc2, "BOTTOMLEFT", 0, -20)
+    TotemStomper.RegisterWatchedOption(cbDuration, "showDuration")
     cbDuration:Show()
 
-    local cbMoveable = TotemStomper.CreateCheckbox("Moveable", "Moveable (Shift Right Click on Totem)", "Allow moving the addon", self, function(_, val)
+    local cbMoveable = TotemStomper.CreateCheckbox("Moveable", "Moveable (Shift Right Click on Totem)", "Allow moving the addon", TotemStomper.OptionsPanel, function(_, val)
         TotemStomper.DB.moveable = val
         TotemStomper.handleMoveable()
     end)
     cbMoveable:SetPoint("TOPLEFT", cbDuration, "BOTTOMLEFT", 0, -10)
-    cbMoveable:SetChecked(TotemStomper.DB.moveable)
+    TotemStomper.RegisterWatchedOption(cbMoveable, "moveable")
     cbMoveable:Show()
+end
+
+-- ===== OnShow Handler =====
+TotemStomper.OptionsPanel:SetScript("OnShow", function(self)
+    TotemStomper.CreateOptions()
+    local updateWatchedOptions = function()
+        for _, option in pairs(TotemStomper.OptionsWatchList) do
+            option.checkbox:SetChecked(TotemStomper.DB[option.dbKey])
+        end
+    end
+    TotemStomper.WatchlistUpdater = C_Timer.NewTicker(0.1, updateWatchedOptions)
+end)
+TotemStomper.OptionsPanel:SetScript("OnHide", function(self)
+    if TotemStomper.WatchlistUpdater then
+        TotemStomper.WatchlistUpdater:Cancel()
+    end
 end)
