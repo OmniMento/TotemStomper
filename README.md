@@ -1,21 +1,78 @@
-TotemStomper WoW Addon
-======================
+# TotemStomper WoW Addon
 
-This addon provides a customizable UI for managing Shaman totems with macro automation.
+TotemStomper is a utility addon for Shamans that manages totem sets through a customizable UI and an automated `/castsequence` macro. It is compatible with both Classic Era and The Burning Crusade.
+
+---
 
 ## Features
 
-### Customizable Totem Buttons:
-Displays 4 buttons representing selected totems. Each can be toggled on/off (left-click) or reassigned (right-click).
+### Four Customizable Totem Buttons
 
-### Dropdown Selection:
-Right-click a button to choose a new totem from categorized Earth, Fire, Water, or Air options.
+The addon displays four configurable totem buttons representing your active totem set. Each button can be enabled, disabled, or reassigned individually.
 
-### Macro Generation:
-Automatically creates or updates a /castsequence macro named TotemStomper based on enabled totems.
+---
 
-### Drag-and-Drop UI:
-Frame is draggable to any screen location. Shift Right Click to toggle on/off movement.
+### Filtered Totem Selection
 
-### Duration Display:
-Displays the remaining duration of the totem on the button.
+Right-clicking a button opens a dropdown menu categorized by element:
+
+- Earth
+- Fire
+- Water
+- Air
+
+The menu only shows totems available to your character based on:
+
+- Level
+- Game version
+- Active talents such as Mana Tide Totem or Totem of Wrath
+
+---
+
+### Macro Generation
+
+TotemStomper automatically creates and updates a global macro named `TotemStomper`.
+
+The macro:
+
+- Includes all enabled totems
+- Supports a configurable reset timer between `6` and `30` seconds
+- Automatically skips disabled totems in the generated sequence
+
+---
+
+### Interactive UI
+
+| Action | Result |
+|---|---|
+| **Left-Click** | Enable or disable a totem |
+| **Right-Click** | Change the assigned totem for that slot |
+| **Disabled Totems** | Displayed with reduced opacity |
+| **Cooldown Timers** | Shows remaining duration directly on each button |
+
+---
+
+### Drag-and-Drop Positioning
+
+The frame can be dragged and positioned anywhere on the screen.
+
+Use **Shift + Right-Click** on the anchor to:
+
+- Lock or unlock movement
+- Hide the drag handle when not needed
+
+---
+
+### Version Validation
+
+On login, the addon validates saved spell data against the current game version to prevent invalid spell assignments when switching between Classic Era and TBC characters.
+
+---
+
+### Settings Menu
+
+Configuration options are available through the standard Blizzard Interface Options panel, including:
+
+- Duration text display
+- Movement locking
+- Macro reset interval
