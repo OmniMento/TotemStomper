@@ -12,6 +12,7 @@ function TotemStomperInitDB()
         showduration_update_interval = 0.5,
         showDuration = true,
         moveable = true,
+        macroReset = 15,
         totems = {
             { spell = "Windfury Totem", enabled = true },
             { spell = "Strength of Earth Totem", enabled = true },
@@ -32,15 +33,90 @@ function TotemStomperInitDB()
     TotemStomper.DB = TotemStomperDB
 end
 
+TotemStomper.ValidateDatabase = function()
+    local playerLevel = UnitLevel("player")
+    
+    for i, data in ipairs(TotemStomper.DB.totems) do
+        local spellName = data.spell
+        local isValid = false
+        
+        -- Loop through our new options to see if the saved spell is allowed here
+        for element, spells in pairs(TotemStomper.totemOptions) do
+            for _, info in ipairs(spells) do
+                if info.name == spellName then
+                    -- Check expansion and level
+                    local levelOk = playerLevel >= (info.minLevel or 1)
+                    local versionOk = not (info.tbcOnly and not TotemStomper.IsTBC)
+                    
+                    if levelOk and versionOk then
+                        isValid = true
+                    end
+                    break
+                end
+            end
+            if isValid then break end
+        end
+
+        -- If it's not valid (e.g. TBC spell on Classic), reset it to a safe default
+        if not isValid then
+            print("|cff0070ddTotemStomper: Resetting invalid totem: " .. spellName .. "|r")
+            data.spell = "Searing Totem" -- Or a sensible default for that slot
+            data.enabled = false
+        end
+    end
+end
+
 
 TotemStomper.buttons = {}
 TotemStomper.dropdown_shown = false
 
+-- Version Detection
+TotemStomper.IsTBC = select(4, GetBuildInfo()) >= 20000 -- TBC is version 2.x.x
+
+-- Talent Helper: Returns true if the player has the specified talent
+-- tab: 1 (Ele), 2 (Enh), 3 (Resto)
+TotemStomper.HasTalent = function(tab, index)
+    local _, _, _, _, rank = GetTalentInfo(tab, index)
+    return rank and rank > 0
+end
+
 TotemStomper.totemOptions = {
-    Earth = { "Strength of Earth Totem", "Earthbind Totem", "Tremor Totem", "Stoneskin Totem", "Stoneclaw Totem" },
-    Fire  = { "Searing Totem", "Fire Nova Totem", "Magma Totem", "Frost Resistance Totem", "Flametongue Totem" },
-    Water = { "Healing Stream Totem", "Mana Spring Totem", "Disease Cleansing Totem", "Poison Cleansing Totem", "Fire Resistance Totem" },
-    Air   = { "Windfury Totem", "Grace of Air Totem", "Nature resistance Totem", "Grounding Totem", "Windwall Totem", "Tranquil Air Totem" },
+    Earth = {
+        { name = "Strength of Earth Totem", minLevel = 10 },
+        { name = "Earthbind Totem", minLevel = 6 },
+        { name = "Tremor Totem", minLevel = 18 },
+        { name = "Stoneskin Totem", minLevel = 4 },
+        { name = "Stoneclaw Totem", minLevel = 8 },
+        { name = "Earth Elemental Totem", minLevel = 66, tbcOnly = true },
+    },
+    Fire  = {
+        { name = "Searing Totem", minLevel = 10 },
+        { name = "Fire Nova Totem", minLevel = 12 },
+        { name = "Magma Totem", minLevel = 26 },
+        { name = "Frost Resistance Totem", minLevel = 24 },
+        { name = "Flametongue Totem", minLevel = 10 },
+        -- Elemental Talent: Totem of Wrath
+        { name = "Totem of Wrath", minLevel = 50, talent = {1, 20}, tbcOnly = true }, 
+        { name = "Fire Elemental Totem", minLevel = 68, tbcOnly = true },
+    },
+    Water = {
+        { name = "Healing Stream Totem", minLevel = 20 },
+        { name = "Mana Spring Totem", minLevel = 26 },
+        { name = "Disease Cleansing Totem", minLevel = 38 },
+        { name = "Poison Cleansing Totem", minLevel = 22 },
+        { name = "Fire Resistance Totem", minLevel = 28 },
+        -- Resto Talent: Mana Tide
+        { name = "Mana Tide Totem", minLevel = 40, talent = {3, 8} },
+    },
+    Air   = {
+        { name = "Windfury Totem", minLevel = 32 },
+        { name = "Grace of Air Totem", minLevel = 42 },
+        { name = "Nature Resistance Totem", minLevel = 30 },
+        { name = "Grounding Totem", minLevel = 30 },
+        { name = "Windwall Totem", minLevel = 36 },
+        { name = "Tranquil Air Totem", minLevel = 50 },
+        { name = "Wrath of Air Totem", minLevel = 64, tbcOnly = true },
+    },
 }
 
 TotemStomper.DropDownMenu = CreateFrame("Frame", "TotemStomperDropdown", UIParent, "UIDropDownMenuTemplate")
@@ -81,12 +157,25 @@ TotemStomper.handleMoveable = function()
     local dragFont = dragText:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     dragFont:SetAllPoints()
     dragFont:SetText("O")
-    dragFont:SetTextColor(1, 1, 1, 0.8)
 
     dragText:EnableMouse(true)
     dragText:RegisterForDrag("LeftButton")
+
+    -- The Hover Tooltip logic
+    dragText:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Lock TotemStomper", 1, 1, 1) -- Title
+        GameTooltip:AddLine("Shift + Right-Click on any Totem to lock or unlock the frame", 1, 0.82, 0, true) -- Help text
+        GameTooltip:Show()
+    end)
+    
+    dragText:SetScript("OnLeave", function() 
+        GameTooltip:Hide() 
+    end)
+
     dragText:SetScript("OnDragStart", function() TotemStomper.MainUI:StartMoving() end)
     dragText:SetScript("OnDragStop", function() TotemStomper.MainUI:StopMovingOrSizing() end)
+    
     TotemStomper.MainUI.dragText = dragText
 end
 
@@ -95,9 +184,17 @@ TotemStomper.handleShowDuration = function()
         if not TotemStomper.TickerShowDuration then
             TotemStomper.TickerShowDuration = C_Timer.NewTicker(TotemStomper.DB.showduration_update_interval, TotemStomper.UpdateTotemDurations)
         end
-    elseif TotemStomper.TickerShowDuration then
-        TotemStomper.TickerShowDuration:Cancel()
-        TotemStomper.TickerShowDuration = nil
+    else
+        if TotemStomper.TickerShowDuration then
+            TotemStomper.TickerShowDuration:Cancel()
+            TotemStomper.TickerShowDuration = nil
+        end
+        
+        for _, btn in ipairs(TotemStomper.buttons) do
+            if btn.cooldown then
+                btn.cooldown:Clear()
+            end
+        end
     end
 end
 
@@ -114,23 +211,45 @@ end
 
 TotemStomper.BuildDropdownMenu = function(index)
     local menu = {}
+    local playerLevel = UnitLevel("player")
+
     for element, spells in pairs(TotemStomper.totemOptions) do
         table.insert(menu, {
             text = "---- " .. element .. " ----",
             isTitle = true,
             notCheckable = true,
-            disabled = true,
         })
-        for _, spell in ipairs(spells) do
-            table.insert(menu, {
-                text = spell,
-                icon = GetSpellTexture(spell),
-                func = function()
-                    TotemStomper.DB.totems[index].spell = spell
-                    TotemStomper.dropdown_shown = false
-                    TotemStomper.RebuildTotemButtons()
+
+        for _, data in ipairs(spells) do
+            local isAvailable = true
+
+            if data.tbcOnly and not TotemStomper.IsTBC then
+                isAvailable = false
+            end
+
+            if isAvailable and data.minLevel and playerLevel < data.minLevel then
+                isAvailable = false
+            end
+
+            if isAvailable and data.talent then
+                if not TotemStomper.HasTalent(data.talent[1], data.talent[2]) then
+                    isAvailable = false
                 end
-            })
+            end
+
+            -- Only add if the player actually knows the spell (or can learn it)
+            -- TODO: Use GetSpellInfo to verify existence in the spellbook
+            if isAvailable then
+                table.insert(menu, {
+                    text = data.name,
+                    icon = GetSpellTexture(data.name),
+                    func = function()
+                        TotemStomper.DB.totems[index].spell = data.name
+                        TotemStomper.dropdown_shown = false
+                        TotemStomper.RebuildTotemButtons()
+                    end
+                })
+            end
         end
     end
     return menu
@@ -221,7 +340,8 @@ end
 
 TotemStomper.UpdateMacro = function()
     local macroName = "TotemStomper"
-    local body = "#showtooltip \n/castsequence reset=combat/15 "
+    local resetTimer = TotemStomper.DB.macroReset or 15
+    local body = "#showtooltip \n/castsequence reset=combat/" .. resetTimer .. " "
 
     for _, data in ipairs(TotemStomper.DB.totems) do
         if data.enabled then
@@ -251,6 +371,9 @@ f:RegisterEvent("ADDON_LOADED")
 f:SetScript("OnEvent", function(self, event, addonName)
     if addonName == "TotemStomper" then
         TotemStomperInitDB()
+        if TotemStomper.ValidateDatabase then
+            TotemStomper.ValidateDatabase()
+        end
         TotemStomper.InitTotemStomper()
         TotemStomper.UpdateMacro()
         self:UnregisterAllEvents()
