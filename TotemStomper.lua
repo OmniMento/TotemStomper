@@ -122,6 +122,8 @@ TotemStomper.totemOptions = {
 TotemStomper.DropDownMenu = CreateFrame("Frame", "TotemStomperDropdown", UIParent, "UIDropDownMenuTemplate")
 
 TotemStomper.UpdateTotemDurations = function()
+    if TotemStomper.RecallLock then return end
+    
     for i, btn in ipairs(TotemStomper.buttons) do
         local totem = TotemStomper.DB.totems[i]
         for slot = 1, 4 do
@@ -196,6 +198,21 @@ TotemStomper.handleShowDuration = function()
             end
         end
     end
+end
+
+TotemStomper.ClearAllTimers = function()
+    TotemStomper.RecallLock = true
+    
+    for _, btn in ipairs(TotemStomper.buttons) do
+        if btn.cooldown then
+            btn.cooldown:Clear()
+        end
+    end
+
+    -- Wait 1 second for the server to sync, then allow updates again
+    C_Timer.After(1, function()
+        TotemStomper.RecallLock = false
+    end)
 end
 
 TotemStomper.ShowDropdown = function(menu, anchor)
@@ -368,17 +385,26 @@ end
 
 local f = CreateFrame("Frame")
 f:RegisterEvent("ADDON_LOADED")
-f:SetScript("OnEvent", function(self, event, addonName)
-    if addonName == "TotemStomper" then
+f:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+local TOTEMIC_CALL_ID = 36936
+
+f:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4, arg5)
+    if event == "ADDON_LOADED" and arg1 == "TotemStomper" then
         TotemStomperInitDB()
         if TotemStomper.ValidateDatabase then
             TotemStomper.ValidateDatabase()
         end
         TotemStomper.InitTotemStomper()
         TotemStomper.UpdateMacro()
-        self:UnregisterAllEvents()
-        self:SetScript("OnEvent", nil)
-        self:Hide()
+        
+        -- ONLY unregister ADDON_LOADED, not the others!
+        self:UnregisterEvent("ADDON_LOADED")
         print("|cff0070ddTotemStomper ready to stomp!|r")
+
+    -- Handle Totemic Call (Ongoing)
+    elseif event == "UNIT_SPELLCAST_SUCCEEDED" and arg1 == "player" then
+        if arg3 == TOTEMIC_CALL_ID then
+            TotemStomper.ClearAllTimers()
+        end
     end
 end)
