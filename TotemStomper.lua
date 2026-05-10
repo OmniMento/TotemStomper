@@ -126,12 +126,18 @@ TotemStomper.UpdateTotemDurations = function()
     
     for i, btn in ipairs(TotemStomper.buttons) do
         local totem = TotemStomper.DB.totems[i]
+        local isCurrentlyActive = false
         for slot = 1, 4 do
             local haveTotem, name, startTime, duration = GetTotemInfo(slot)
-            if haveTotem and name:lower():find(totem.spell:lower(), 1, true) then
+            if haveTotem and name and name:lower():find(totem.spell:lower(), 1, true) then
                 btn.cooldown:SetCooldown(startTime, duration)
+                isCurrentlyActive = true
                 break
             end
+        end
+
+        if not isCurrentlyActive then
+            btn.cooldown:Clear()
         end
     end
 end
