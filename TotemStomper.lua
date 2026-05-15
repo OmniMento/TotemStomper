@@ -33,35 +33,56 @@ function TotemStomperInitDB()
     TotemStomper.DB = TotemStomperDB
 end
 
+TotemStomper.IsTotemAvailable = function(info, playerLevel)
+    local levelOk = playerLevel >= (info.minLevel or 1)
+    local versionOk = not (info.tbcOnly and not TotemStomper.IsTBC)
+    local talentOk = not info.talent or TotemStomper.HasTalent(info.talent[1], info.talent[2])
+    return levelOk and versionOk and talentOk
+end
+
 TotemStomper.ValidateDatabase = function()
     local playerLevel = UnitLevel("player")
-    
+
     for i, data in ipairs(TotemStomper.DB.totems) do
         local spellName = data.spell
         local isValid = false
-        
-        -- Loop through our new options to see if the saved spell is allowed here
+        local foundElement = nil
+
+        -- Locate which element this spell belongs to and whether it's still usable
         for element, spells in pairs(TotemStomper.totemOptions) do
             for _, info in ipairs(spells) do
                 if info.name == spellName then
-                    -- Check expansion and level
-                    local levelOk = playerLevel >= (info.minLevel or 1)
-                    local versionOk = not (info.tbcOnly and not TotemStomper.IsTBC)
-                    
-                    if levelOk and versionOk then
+                    foundElement = element
+                    if TotemStomper.IsTotemAvailable(info, playerLevel) then
                         isValid = true
                     end
                     break
                 end
             end
-            if isValid then break end
+            if foundElement then break end
         end
 
-        -- If it's not valid (e.g. TBC spell on Classic), reset it to a safe default
+        -- If it's not valid (e.g. lost talent on respec, TBC spell on Classic),
+        -- fall back to the first available totem in the same element.
         if not isValid then
-            print("|cff0070ddTotemStomper: Resetting invalid totem: " .. spellName .. "|r")
-            data.spell = "Searing Totem" -- Or a sensible default for that slot
-            data.enabled = false
+            local fallback = nil
+            if foundElement and TotemStomper.totemOptions[foundElement] then
+                for _, info in ipairs(TotemStomper.totemOptions[foundElement]) do
+                    if TotemStomper.IsTotemAvailable(info, playerLevel) then
+                        fallback = info.name
+                        break
+                    end
+                end
+            end
+
+            if fallback then
+                print("|cff0070ddTotemStomper: '" .. spellName .. "' is no longer available, switching to '" .. fallback .. "'|r")
+                data.spell = fallback
+            else
+                print("|cff0070ddTotemStomper: Resetting invalid totem: " .. spellName .. "|r")
+                data.spell = "Searing Totem"
+                data.enabled = false
+            end
         end
     end
 end
@@ -120,6 +141,23 @@ TotemStomper.totemOptions = {
 }
 
 TotemStomper.DropDownMenu = CreateFrame("Frame", "TotemStomperDropdown", UIParent, "UIDropDownMenuTemplate")
+
+-- Close the dropdown when the user clicks anywhere outside of it or the totem buttons
+TotemStomper.MouseListener = CreateFrame("Frame")
+TotemStomper.MouseListener:RegisterEvent("GLOBAL_MOUSE_DOWN")
+TotemStomper.MouseListener:SetScript("OnEvent", function(self, event)
+    if event ~= "GLOBAL_MOUSE_DOWN" or not TotemStomper.dropdown_shown then return end
+
+    if DropDownList1 and DropDownList1:IsShown() and DropDownList1:IsMouseOver() then return end
+    if DropDownList2 and DropDownList2:IsShown() and DropDownList2:IsMouseOver() then return end
+
+    for _, btn in ipairs(TotemStomper.buttons) do
+        if btn:IsMouseOver() then return end
+    end
+
+    CloseDropDownMenus()
+    TotemStomper.dropdown_shown = false
+end)
 
 TotemStomper.UpdateTotemDurations = function()
     if TotemStomper.RecallLock then return end
@@ -392,6 +430,8 @@ end
 local f = CreateFrame("Frame")
 f:RegisterEvent("ADDON_LOADED")
 f:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+f:RegisterEvent("PLAYER_TALENT_UPDATE")
+f:RegisterEvent("CHARACTER_POINTS_CHANGED")
 local TOTEMIC_CALL_ID = 36936
 
 f:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4, arg5)
@@ -402,7 +442,7 @@ f:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4, arg5)
         end
         TotemStomper.InitTotemStomper()
         TotemStomper.UpdateMacro()
-        
+
         -- ONLY unregister ADDON_LOADED, not the others!
         self:UnregisterEvent("ADDON_LOADED")
         print("|cff0070ddTotemStomper ready to stomp!|r")
@@ -411,6 +451,13 @@ f:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4, arg5)
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" and arg1 == "player" then
         if arg3 == TOTEMIC_CALL_ID then
             TotemStomper.ClearAllTimers()
+        end
+
+    -- Re-validate totems when talents change (respec, switching specs)
+    elseif event == "PLAYER_TALENT_UPDATE" or event == "CHARACTER_POINTS_CHANGED" then
+        if TotemStomper.DB and not UnitAffectingCombat("player") then
+            TotemStomper.ValidateDatabase()
+            TotemStomper.RebuildTotemButtons()
         end
     end
 end)
