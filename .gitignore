@@ -1,4 +1,4 @@
-/Output/
+/dist/
 
 # Compiled Lua sources
 luac.out
