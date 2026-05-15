@@ -9,6 +9,7 @@ set "VERSION=unknown"
 if exist TotemStomper.toc (
     for /f "tokens=2 delims=:" %%a in ('findstr /B /C:"## Version:" TotemStomper.toc') do (
         set "VERSION=%%a"
+        set "VERSION=!VERSION: =!"
     )
 )
 
