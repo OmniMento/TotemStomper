@@ -1,6 +1,7 @@
 TotemStomper = {}
 
 TotemStomper.CURRENT_DB_VERSION = 1
+TotemStomper.addonLoaded = false
 
 function TotemStomperInitDB()
     defaultDB = {
@@ -320,7 +321,7 @@ TotemStomper.CreateTotemButton = function(index, spell)
     -- Check if spell icons are loaded
     local icon = GetSpellTexture(spell)
     if not icon then
-        C_Timer.After(1, function() TotemStomper.CreateTotemButton(index, spell) end)
+        C_Timer.After(1, function() TotemStomper.RebuildTotemButtons() end)
         return
     end
     
@@ -423,8 +424,14 @@ end
 -- Init routine
 TotemStomper.InitTotemStomper = function()
     TotemStomper.initMainUI()
-    TotemStomper.RebuildTotemButtons()
     TotemStomper.handleShowDuration()
+end
+
+TotemStomper.RefreshFromTalents = function()
+    if UnitAffectingCombat("player") then return end
+    TotemStomper.ValidateDatabase()
+    TotemStomper.RebuildTotemButtons()
+    TotemStomper.UpdateMacro()
 end
 
 local f = CreateFrame("Frame")
@@ -437,27 +444,20 @@ local TOTEMIC_CALL_ID = 36936
 f:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4, arg5)
     if event == "ADDON_LOADED" and arg1 == "TotemStomper" then
         TotemStomperInitDB()
-        if TotemStomper.ValidateDatabase then
-            TotemStomper.ValidateDatabase()
-        end
         TotemStomper.InitTotemStomper()
-        TotemStomper.UpdateMacro()
-
-        -- ONLY unregister ADDON_LOADED, not the others!
+        TotemStomper.addonLoaded = true
         self:UnregisterEvent("ADDON_LOADED")
         print("|cff0070ddTotemStomper ready to stomp!|r")
+    elseif TotemStomper.addonLoaded then
+        -- Handle Totemic Call (Ongoing)
+        if event == "UNIT_SPELLCAST_SUCCEEDED" and arg1 == "player" then
+            if arg3 == TOTEMIC_CALL_ID then
+                TotemStomper.ClearAllTimers()
+            end
 
-    -- Handle Totemic Call (Ongoing)
-    elseif event == "UNIT_SPELLCAST_SUCCEEDED" and arg1 == "player" then
-        if arg3 == TOTEMIC_CALL_ID then
-            TotemStomper.ClearAllTimers()
-        end
-
-    -- Re-validate totems when talents change (respec, switching specs)
-    elseif event == "PLAYER_TALENT_UPDATE" or event == "CHARACTER_POINTS_CHANGED" then
-        if TotemStomper.DB and not UnitAffectingCombat("player") then
-            TotemStomper.ValidateDatabase()
-            TotemStomper.RebuildTotemButtons()
+        -- Handle Talent Changes
+        elseif event == "PLAYER_TALENT_UPDATE" or event == "CHARACTER_POINTS_CHANGED" then
+            C_Timer.After(1, function() TotemStomper.RefreshFromTalents() end)
         end
     end
 end)
