@@ -1,3 +1,5 @@
+if select(2, UnitClass("player")) ~= "SHAMAN" then return end
+
 TotemStomper = {}
 
 TotemStomper.CURRENT_DB_VERSION = 1

@@ -1,3 +1,5 @@
+if select(2, UnitClass("player")) ~= "SHAMAN" then return end
+
 local addonName, addonTable = ...
 local GetMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
 local addonVersion = GetMetadata(addonName, "Version") or "0.0.1"
